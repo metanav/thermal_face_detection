@@ -9,7 +9,6 @@ from PIL import ImageDraw
 from ThermalCamera import ThermalCamera
 from Streaming import StreamingHandler, StreamingServer
 
-
 def decode_boxes(raw_boxes, anchors):
     boxes = np.zeros_like(raw_boxes)
 
@@ -64,7 +63,6 @@ def calculate_IoU(first_box, other_boxes):
 
 def weighted_non_max_suppression(boxes, scores):
     if len(boxes) == 0: return [], []
-    min_suppression_threshold = 0.1
     output_boxes = []
     output_scores = []
     # Sort the detections from highest to lowest score.
@@ -102,7 +100,7 @@ def temperature_to_color(val):
     val = int(val)
     hue = (180 - (val * 6)) / 360.0
     return [int(c*255) for c in colorsys.hsv_to_rgb(hue % 1, 1.0, 1.0)]
-    
+
 def face_detect(frame):
     if len(frame) == 0:
         return frame
@@ -135,41 +133,49 @@ def face_detect(frame):
     scores   = 1.0 / (1.0 + np.exp(-scores))  #sigmoid
     scores   = np.squeeze(scores) #remove last dimension
     boxes    = np.squeeze(decode_boxes(output_r, anchors))
-    mask     = scores >= 0.45
+
+    mask1           = scores >= confidence_score_threshold
+    filtered_boxes  = boxes[mask1]
+    filtered_scores = scores[mask1]
     
-    filtered_boxes = boxes[mask]
-    filtered_scores = scores[mask]
+    mask2 = [(b[3] - b[1]) * (b[2] - b[0]) < 0.4 for b in filtered_boxes] 
+    filtered_boxes  = filtered_boxes[mask2]
+    filtered_scores = filtered_scores[mask2]
+
     output_boxes, output_scores = weighted_non_max_suppression(filtered_boxes, filtered_scores)
     
-    frame = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
+    frame, max_tem = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
 
     return frame
 
 def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
+    max_tem = 0.0
+
     if len(output_boxes) > 0:
         top_k_indices = np.argsort(output_scores)[-k:][::-1]
         draw     = ImageDraw.Draw(img_out)
         centroids = []
+    
 
         for index in top_k_indices:
             y_min, x_min, y_max, x_max = output_boxes[index][:4]
 
             bnd = [
-                (x_min * img_out.height , y_min * img_out.width), 
+                (x_min * img_out.height , y_min * img_out.width - 1.0), 
                 (x_max * img_out.height , y_max * img_out.width)
             ]
             draw.rectangle(bnd, outline='white')
-            #draw.text(bnd[0], '{:0.2f}'.format(output_scores[index]))
-            r = tem[int(bnd[0][1]):int(bnd[1][1]), int(bnd[0][0]):int(bnd[1][0])]
-            if r.shape[0] != 0 and r.shape[1] != 0:
-                print(tem.shape, r.shape)
-                print(np.amax(tem), np.amax(r))
+            face_tem = tem[int(bnd[0][1]):int(bnd[1][1]), int(bnd[0][0]):int(bnd[1][0])]
+            
+            if face_tem.shape[0] != 0 and face_tem.shape[1] != 0:
+                max_tem = np.amax(face_tem)
+                #draw.text((bnd[0][0], bnd[0][1]-2), '{:0.2f}'.format(np.amax(face_temp))
 
     output_buffer = io.BytesIO()
     img_out = img_out.crop((0, 0, img_out.width, img_out.height ))
     img_out.save(output_buffer, format="jpeg")
     frame = output_buffer.getvalue()
-    return frame
+    return frame, max_tem
 
 if __name__ == '__main__':
     model      = './model/face_detection_front_32.tflite'
@@ -179,6 +185,8 @@ if __name__ == '__main__':
     h_scale    = 128.0
     input_mean = 127.5
     input_std  = 127.5
+    min_suppression_threshold = 0.2
+    confidence_score_threshold = 0.8
 
     interpreter = tflite.Interpreter(model_path = model)
     interpreter.allocate_tensors()
