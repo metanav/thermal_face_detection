@@ -1,13 +1,14 @@
-import io
 import tflite_runtime.interpreter as tflite
 import numpy as np
 import time
+import io
 import colorsys
+import qrcode
+from src import gd3
 from threading import Condition
 from PIL import Image
 from PIL import ImageDraw
 from ThermalCamera import ThermalCamera
-from Streaming import StreamingHandler, StreamingServer
 
 def decode_boxes(raw_boxes, anchors):
     boxes = np.zeros_like(raw_boxes)
@@ -92,26 +93,51 @@ def weighted_non_max_suppression(boxes, scores):
         
     return output_boxes, output_scores
 
-def temperature_to_color(val):
-    vmin = 20.0
-    vmax = 40.0
+def temperature_to_color(val, vmin, vmax):
+    color = ((0,0,1), (0,1,1), (0,1,0), (1,1,0), (1,0,0), (1,0,1), (1,1,1))
+    fractBetween = 0.0;
+    vmin = vmin - 0.5
+    vmax = vmax + 0.5 
     vrange = vmax - vmin
-    val = 100 - (((val - vmin) * 100) / vrange) 
-    val = int(val)
-    hue = (180 - (val * 6)) / 360.0
-    return [int(c*255) for c in colorsys.hsv_to_rgb(hue % 1, 1.0, 1.0)]
+
+    val = (val - vmin) / vrange;
+    if np.isnan(val):
+        val = 0.0
+
+    if val <= 0:
+        idx1 = 0
+        idx2 = 0
+    elif val >= 1:
+        idx1 = len(color) - 1
+        idx2 = len(color) - 1
+    else:
+        val = val * (len(color) -1)
+        idx1 = int(val);
+        idx2 = idx1 + 1;
+        fractBetween = val - idx1;
+
+    r = int((((color[idx2][0] - color[idx1][0]) * fractBetween) + color[idx1][0]) * 255.0)
+    g = int((((color[idx2][1] - color[idx1][1]) * fractBetween) + color[idx1][1]) * 255.0)
+    b = int((((color[idx2][2] - color[idx1][2]) * fractBetween) + color[idx1][2]) * 255.0)
+
+    return r, g, b
 
 def face_detect(frame):
     if len(frame) == 0:
+        print("Zero length frame")
         return frame
 
+    start_ms = time.time()
+    vmin = min(frame)
+    vmax = max(frame)
     tem  = np.zeros((24, 32))
-    img = Image.new('RGB', (32, 24), 'black')
+    img  = Image.new('RGB', (32, 24), 'black')
+    
     for y in range(24):
         for x in range(32):
             val = frame[32 * (23-y) + x]
-            rgb = temperature_to_color(val)
-            img.putpixel((x, y), tuple(rgb))
+            rgb = temperature_to_color(val, vmin, vmax)
+            img.putpixel((x, y), rgb)
             tem[y][x] = val
         
     tem = np.transpose(tem)
@@ -119,13 +145,12 @@ def face_detect(frame):
     img_ori = img.crop((0, 0, img.width, img.width))
     img = img_ori.resize((width, height), Image.BICUBIC)
     
+    print("inference time = {:.2f} ms".format((time.time() - start_ms) * 1000.0))
     input_data = np.expand_dims(img, axis=0)
     input_data = (np.float32(input_data) - input_mean) / input_std
     
-    start_ms = time.time()
     interpreter.set_tensor(input_details[0]['index'], input_data)
     interpreter.invoke()
-    print("inference time = {:.2f} ms".format((time.time() - start_ms) * 1000.0))
     
     output_r = interpreter.get_tensor(output_details[0]['index'])
     output_c = interpreter.get_tensor(output_details[1]['index'])
@@ -146,10 +171,10 @@ def face_detect(frame):
     
     frame, max_tem = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
 
-    return frame
+    return frame, max_tem
 
 def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
-    max_tem = 0.0
+    max_face_tem = 0.0
 
     if len(output_boxes) > 0:
         top_k_indices = np.argsort(output_scores)[-k:][::-1]
@@ -168,14 +193,24 @@ def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
             face_tem = tem[int(bnd[0][1]):int(bnd[1][1]), int(bnd[0][0]):int(bnd[1][0])]
             
             if face_tem.shape[0] != 0 and face_tem.shape[1] != 0:
-                max_tem = np.amax(face_tem)
+                max_face_tem = np.amax(face_tem)
                 #draw.text((bnd[0][0], bnd[0][1]-2), '{:0.2f}'.format(np.amax(face_temp))
 
     output_buffer = io.BytesIO()
-    img_out = img_out.crop((0, 0, img_out.width, img_out.height ))
+    #img_out = img_out.crop((0, 0, img_out.width, img_out.height ))
+    img_out = img_out.resize((img_out.width * 10, img_out.height * 10), Image.BICUBIC)
+
+    if max_face_tem > 34.8:
+        qr = qrcode.QRCode(box_size=2)
+        qr.add_data('https://gaizine.com')
+        qr.make()
+        img_qr = qr.make_image()
+        pos = (img_out.size[0] - img_qr.size[0], img_out.size[1] - img_qr.size[1])
+        img_out.paste(img_qr, pos)
+
     img_out.save(output_buffer, format="jpeg")
     frame = output_buffer.getvalue()
-    return frame, max_tem
+    return frame, max_face_tem
 
 if __name__ == '__main__':
     model      = './model/face_detection_front_32.tflite'
@@ -185,8 +220,8 @@ if __name__ == '__main__':
     h_scale    = 128.0
     input_mean = 127.5
     input_std  = 127.5
-    min_suppression_threshold = 0.2
-    confidence_score_threshold = 0.8
+    min_suppression_threshold  = 0.2
+    confidence_score_threshold = 0.75
 
     interpreter = tflite.Interpreter(model_path = model)
     interpreter.allocate_tensors()
@@ -202,12 +237,22 @@ if __name__ == '__main__':
     thermal_camera = ThermalCamera(fps, face_detect)
     print("Started recording")
     thermal_camera.start_recording()
+    print("Init GD")
+    gd3.init()
     try:
-        address = ('', 8000)
-        handler = StreamingHandler(thermal_camera) 
-        server  = StreamingServer(address, handler)
-        print("Started server")
-        server.serve_forever()
+        prev_face_tem = 0.0
+        while True:
+            with thermal_camera.condition:
+                thermal_camera.condition.wait()
+                frame    = thermal_camera.frame
+                face_tem = thermal_camera.max_tem
+                if prev_face_tem > 34.8 and face_tem > 34.8:
+                    time.sleep(20)
+                else:
+                    gd3.load(frame)
+                    gd3.display(face_tem)
+
+                prev_face_tem = face_tem
     finally:
         thermal_camera.stop_recording()
 
