@@ -1,10 +1,11 @@
 import tflite_runtime.interpreter as tflite
 import numpy as np
 import time
+import os
 import io
 import colorsys
 import qrcode
-from src import gd3
+import gd3
 from threading import Condition
 from PIL import Image
 from PIL import ImageDraw
@@ -213,7 +214,8 @@ def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
     return frame, max_face_tem
 
 if __name__ == '__main__':
-    model      = './model/face_detection_front_32.tflite'
+    dirname    = os.path.dirname(__file__)
+    model      = '{}/model/face_detection_front_32.tflite'.format(dirname)
     x_scale    = 128.0
     y_scale    = 128.0
     w_scale    = 128.0
@@ -229,7 +231,7 @@ if __name__ == '__main__':
     input_details  = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
     
-    anchors  = np.load('./model/anchors.npy')
+    anchors  = np.load('{}/model/anchors.npy'.format(dirname))
     height   = input_details[0]['shape'][1]
     width    = input_details[0]['shape'][2]
     fps      = 4
