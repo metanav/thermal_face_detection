@@ -170,16 +170,16 @@ def face_detect(frame):
 
     output_boxes, output_scores = weighted_non_max_suppression(filtered_boxes, filtered_scores)
     
-    frame, max_tem = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
+    img_out, max_tem = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
 
-    return frame, max_tem
+    return img_out, max_tem
 
-def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
+def draw_rectangle(img_ori, tem, output_boxes, output_scores, k=5):
     max_face_tem = 0.0
 
     if len(output_boxes) > 0:
         top_k_indices = np.argsort(output_scores)[-k:][::-1]
-        draw     = ImageDraw.Draw(img_out)
+        draw      = ImageDraw.Draw(img_ori)
         centroids = []
     
 
@@ -187,8 +187,8 @@ def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
             y_min, x_min, y_max, x_max = output_boxes[index][:4]
 
             bnd = [
-                (x_min * img_out.height , y_min * img_out.width - 1.0), 
-                (x_max * img_out.height , y_max * img_out.width)
+                (x_min * img_ori.height , y_min * img_ori.width - 1.0), 
+                (x_max * img_ori.height , y_max * img_ori.width)
             ]
             draw.rectangle(bnd, outline='white')
             face_tem = tem[int(bnd[0][1]):int(bnd[1][1]), int(bnd[0][0]):int(bnd[1][0])]
@@ -197,21 +197,10 @@ def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
                 max_face_tem = np.amax(face_tem)
                 #draw.text((bnd[0][0], bnd[0][1]-2), '{:0.2f}'.format(np.amax(face_temp))
 
-    output_buffer = io.BytesIO()
-    #img_out = img_out.crop((0, 0, img_out.width, img_out.height ))
-    img_out = img_out.resize((img_out.width * 10, img_out.height * 10), Image.BICUBIC)
+    #img_out = img_ori.crop((0, 0, img_ori.width, img_ori.height ))
+    img_out = img_ori.resize((img_ori.width * 10, img_ori.height * 10), Image.BICUBIC)
 
-    if max_face_tem > 34.8:
-        qr = qrcode.QRCode(box_size=2)
-        qr.add_data('https://gaizine.com')
-        qr.make()
-        img_qr = qr.make_image()
-        pos = (img_out.size[0] - img_qr.size[0], img_out.size[1] - img_qr.size[1])
-        img_out.paste(img_qr, pos)
-
-    img_out.save(output_buffer, format="jpeg")
-    frame = output_buffer.getvalue()
-    return frame, max_face_tem
+    return img_out, max_face_tem
 
 if __name__ == '__main__':
     model      = 'model/face_detection_front_32.tflite'
@@ -245,13 +234,31 @@ if __name__ == '__main__':
         while True:
             with thermal_camera.condition:
                 thermal_camera.condition.wait()
-                frame    = thermal_camera.frame
+                img_out  = thermal_camera.img_out
                 face_tem = thermal_camera.max_tem
-                if prev_face_tem > 34.8 and face_tem > 34.8:
-                    time.sleep(20)
-                else:
+                output_buffer = io.BytesIO()
+
+                if prev_face_tem > 34.0 and face_tem > 34.0:
+                    qr = qrcode.QRCode(box_size=3)
+                    qr.add_data('https://gaizine.com')
+                    qr.make()
+                    img_qr = qr.make_image()
+                    pos = (img_out.size[0] - img_qr.size[0], img_out.size[1] - img_qr.size[1])
+                    img_out.paste(img_qr, pos)
+                    img_out.save(output_buffer, format="jpeg")
+                    frame = output_buffer.getvalue()
                     gd3.load(frame)
-                    gd3.display(face_tem)
+
+                    count = 20
+                    while count > -1:
+                        gd3.display(face_tem, count)
+                        time.sleep(1)
+                        count = count - 1
+                else:
+                    img_out.save(output_buffer, format="jpeg")
+                    frame = output_buffer.getvalue()
+                    gd3.load(frame)
+                    gd3.display(face_tem, -1)
 
                 prev_face_tem = face_tem
     finally:

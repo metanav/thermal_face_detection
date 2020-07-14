@@ -39,13 +39,14 @@ void load(uint8_t *img)
     EVE_LIB_AwaitCoProEmpty();
 }
 
-void display(float temperature)
+void display(float temperature, int8_t count)
 {
     uint32_t eve_addr;
     uint32_t img_width;
     uint32_t img_height;
     uint8_t scale = 2;
     char tem[20];
+    char counter[6];
 
     sprintf(tem, "Temperature: %04.1f", temperature);
     EVE_LIB_GetProps(&eve_addr, &img_width, &img_height);
@@ -69,12 +70,14 @@ void display(float temperature)
     EVE_CMD_TEXT(182, 0, 28, 0, " C");
     EVE_VERTEX2II(0, 30, 0, 0);
 
-    if (temperature > 30.8) {
+    if (count > -1) {
         EVE_COLOR_RGB(255, 0, 0);
         EVE_CMD_TEXT(245, 30, 29, 0, "High temperature!");
         EVE_COLOR_RGB(255, 225, 255);
         EVE_CMD_TEXT(245, 62, 29, 0, "Scan the QR Code to");
         EVE_CMD_TEXT(245, 90, 29, 0, "know more.");
+	sprintf(counter, "00:%02d", count);
+        EVE_CMD_TEXT(290, 130, 31, 0, counter);
     }
 
     EVE_END();
