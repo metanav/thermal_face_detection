@@ -31,12 +31,13 @@ RUN git clone https://github.com/pimoroni/mlx90640-library.git
 RUN cd mlx90640-library && make clean && make I2C_MODE=LINUX && make install
 RUN cd mlx90640-library/python/library && make build && make install
 
-RUN git clone https://metanav:Doeacc518@github.com/metanav/COVID_19_Challenge.git
 RUN wget -q ftp://u45902898-ide:Ftd1%24erv@ftp.ftdichip.com/CES/Forum/BRT_AN_025_Beta/BRT_AN_025_Source_BETA.zip
 RUN unzip BRT_AN_025_Source_BETA.zip -d BRT_AN_025 && \
     cp -r BRT_AN_025/Examples/RaspberryPi/lib . && \
-    rm -rf BRT_AN_025 BRT_AN_025_Source_BETA.zip && \
-    cp EVE_config.h lib/eve/include && make
+    rm -rf BRT_AN_025 BRT_AN_025_Source_BETA.zip
+
+COPY . .
+RUN cp EVE_config.h lib/eve/include && make
 
 # execute main.py on start
 CMD ["python3", "main.py"]
