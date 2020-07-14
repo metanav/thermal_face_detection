@@ -214,8 +214,8 @@ def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
     return frame, max_face_tem
 
 if __name__ == '__main__':
-    dirname    = os.path.dirname(__file__)
-    model      = '{}/model/face_detection_front_32.tflite'.format(dirname)
+    model      = 'model/face_detection_front_32.tflite'
+    anchors    = np.load('model/anchors.npy')
     x_scale    = 128.0
     y_scale    = 128.0
     w_scale    = 128.0
@@ -231,7 +231,6 @@ if __name__ == '__main__':
     input_details  = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
     
-    anchors  = np.load('{}/model/anchors.npy'.format(dirname))
     height   = input_details[0]['shape'][1]
     width    = input_details[0]['shape'][2]
     fps      = 8
