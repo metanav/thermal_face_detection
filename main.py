@@ -234,7 +234,7 @@ if __name__ == '__main__':
     anchors  = np.load('{}/model/anchors.npy'.format(dirname))
     height   = input_details[0]['shape'][1]
     width    = input_details[0]['shape'][2]
-    fps      = 4
+    fps      = 8
 
     thermal_camera = ThermalCamera(fps, face_detect)
     print("Started recording")
