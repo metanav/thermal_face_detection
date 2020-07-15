@@ -4,7 +4,7 @@
 %{
 extern void init();
 extern void load(uint8_t *img);
-extern void display(float temperature, int8_t count);
+extern void display(float temperature, uint8_t detected, int8_t count);
 %}
 
 %typemap(in) (uint8_t *img) {
@@ -13,4 +13,4 @@ extern void display(float temperature, int8_t count);
 
 extern void init();
 extern void load(uint8_t *img);
-extern void display(float temperature, int8_t count);
+extern void display(float temperature, uint8_t detected, int8_t count);

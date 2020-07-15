@@ -6,6 +6,7 @@ import io
 import colorsys
 import qrcode
 import gd3
+from collections import deque
 from threading import Condition
 from PIL import Image
 from PIL import ImageDraw
@@ -146,7 +147,7 @@ def face_detect(frame):
     img_ori = img.crop((0, 0, img.width, img.width))
     img = img_ori.resize((width, height), Image.BICUBIC)
     
-    print("inference time = {:.2f} ms".format((time.time() - start_ms) * 1000.0))
+    #print("inference time = {:.2f} ms".format((time.time() - start_ms) * 1000.0))
     input_data = np.expand_dims(img, axis=0)
     input_data = (np.float32(input_data) - input_mean) / input_std
     
@@ -164,22 +165,23 @@ def face_detect(frame):
     filtered_boxes  = boxes[mask1]
     filtered_scores = scores[mask1]
     
-    mask2 = [(b[3] - b[1]) * (b[2] - b[0]) < 0.4 for b in filtered_boxes] 
-    filtered_boxes  = filtered_boxes[mask2]
-    filtered_scores = filtered_scores[mask2]
+    #mask2 = [(b[3] - b[1]) * (b[2] - b[0]) < 0.4 for b in filtered_boxes] 
+    #filtered_boxes  = filtered_boxes[mask2]
+    #filtered_scores = filtered_scores[mask2]
 
     output_boxes, output_scores = weighted_non_max_suppression(filtered_boxes, filtered_scores)
-    
-    img_out, max_tem = draw_rectangle(img_ori, tem, output_boxes, output_scores, 5)
 
-    return img_out, max_tem
+    img_out = img_ori.copy() 
+    img_out, max_tem = draw_rectangle(img_out, tem, output_boxes, output_scores, 2)
 
-def draw_rectangle(img_ori, tem, output_boxes, output_scores, k=5):
+    return img_ori, img_out, max_tem
+
+def draw_rectangle(img_out, tem, output_boxes, output_scores, k=5):
     max_face_tem = 0.0
 
     if len(output_boxes) > 0:
         top_k_indices = np.argsort(output_scores)[-k:][::-1]
-        draw      = ImageDraw.Draw(img_ori)
+        draw      = ImageDraw.Draw(img_out)
         centroids = []
     
 
@@ -187,8 +189,8 @@ def draw_rectangle(img_ori, tem, output_boxes, output_scores, k=5):
             y_min, x_min, y_max, x_max = output_boxes[index][:4]
 
             bnd = [
-                (x_min * img_ori.height , y_min * img_ori.width - 1.0), 
-                (x_max * img_ori.height , y_max * img_ori.width)
+                (x_min * img_out.height , y_min * img_out.width - 1.0), 
+                (x_max * img_out.height , y_max * img_out.width)
             ]
             draw.rectangle(bnd, outline='white')
             face_tem = tem[int(bnd[0][1]):int(bnd[1][1]), int(bnd[0][0]):int(bnd[1][0])]
@@ -197,8 +199,6 @@ def draw_rectangle(img_ori, tem, output_boxes, output_scores, k=5):
                 max_face_tem = np.amax(face_tem)
                 #draw.text((bnd[0][0], bnd[0][1]-2), '{:0.2f}'.format(np.amax(face_temp))
 
-    #img_out = img_ori.crop((0, 0, img_ori.width, img_ori.height ))
-    img_out = img_ori.resize((img_ori.width * 10, img_ori.height * 10), Image.BICUBIC)
 
     return img_out, max_face_tem
 
@@ -230,37 +230,49 @@ if __name__ == '__main__':
     print("Init GD")
     gd3.init()
     try:
-        prev_face_tem = 0.0
+        prev_face_tem = deque(maxlen=5)
+        threshold = 38.0
         while True:
             with thermal_camera.condition:
                 thermal_camera.condition.wait()
-                img_out  = thermal_camera.img_out
-                face_tem = thermal_camera.max_tem
+                img  = thermal_camera.img_ori
+                face_tem = thermal_camera.max_tem + 2.5  
+                detected = False
+
+                #print(['{:0.2f}'.format(pt) for pt in prev_face_tem], '{:0.2f}'.format(face_tem), end=' ')            
+
+                recent_occurrences = sum(t > (face_tem - 1.0) and t < (face_tem + 1.0) for t in prev_face_tem)
+                if face_tem > 25.0 and recent_occurrences > 2:
+                    img = thermal_camera.img_out
+                    detected = True
+                    print('out')
+
+                img = img.resize((img.width * 10, img.height * 10), Image.BICUBIC)
                 output_buffer = io.BytesIO()
 
-                if prev_face_tem > 34.0 and face_tem > 34.0:
+                if detected == True and face_tem > threshold:
                     qr = qrcode.QRCode(box_size=3)
-                    qr.add_data('https://gaizine.com')
+                    qr.add_data('https://bit.ly/32jmy6x')
                     qr.make()
                     img_qr = qr.make_image()
-                    pos = (img_out.size[0] - img_qr.size[0], img_out.size[1] - img_qr.size[1])
-                    img_out.paste(img_qr, pos)
-                    img_out.save(output_buffer, format="jpeg")
+                    pos = (img.size[0] - img_qr.size[0], img.size[1] - img_qr.size[1])
+                    img.paste(img_qr, pos)
+                    img.save(output_buffer, format="jpeg")
                     frame = output_buffer.getvalue()
                     gd3.load(frame)
 
                     count = 20
                     while count > -1:
-                        gd3.display(face_tem, count)
+                        gd3.display(face_tem, detected, count)
                         time.sleep(1)
                         count = count - 1
                 else:
-                    img_out.save(output_buffer, format="jpeg")
+                    img.save(output_buffer, format="jpeg")
                     frame = output_buffer.getvalue()
                     gd3.load(frame)
-                    gd3.display(face_tem, -1)
+                    gd3.display(face_tem, detected, -1)
 
-                prev_face_tem = face_tem
+                prev_face_tem.append(face_tem)
     finally:
         thermal_camera.stop_recording()
 

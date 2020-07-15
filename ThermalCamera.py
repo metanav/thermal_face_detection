@@ -9,6 +9,7 @@ from threading import Thread, Condition
 class ThermalCamera:
     def __init__(self, fps, inference_callback):
         self.fps          = fps
+        self.img_ori      = None
         self.img_out      = None
         self.max_tem      = None
         self.condition    = Condition()
@@ -20,7 +21,7 @@ class ThermalCamera:
         while True:
             with self.condition:
                 frame = mlx90640.get_frame()
-                self.img_out, self.max_tem = self.inference_callback(frame)
+                self.img_ori, self.img_out, self.max_tem = self.inference_callback(frame)
                 self.condition.notify_all()
 
             time.sleep(1.0 / self.fps)

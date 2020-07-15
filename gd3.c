@@ -39,16 +39,15 @@ void load(uint8_t *img)
     EVE_LIB_AwaitCoProEmpty();
 }
 
-void display(float temperature, int8_t count)
+void display(float temperature, uint8_t detected, int8_t count)
 {
     uint32_t eve_addr;
     uint32_t img_width;
     uint32_t img_height;
     uint8_t scale = 2;
-    char tem[20];
+    char tem[35];
     char counter[6];
 
-    sprintf(tem, "Temperature: %04.1f", temperature);
     EVE_LIB_GetProps(&eve_addr, &img_width, &img_height);
 
     EVE_LIB_BeginCoProList();
@@ -65,20 +64,30 @@ void display(float temperature, int8_t count)
 		    img_width * scale, img_height * scale);
     EVE_BITMAP_SIZE_H(img_width >> 9, img_height >> 9);
     EVE_BEGIN(EVE_BEGIN_BITMAPS);
-    EVE_CMD_TEXT(0, 0, 28, 0, tem);
-    EVE_CMD_TEXT(180, 0, 20, 0, "o");
-    EVE_CMD_TEXT(182, 0, 28, 0, " C");
+
+    if (detected) {
+        EVE_CMD_TEXT(0, 0, 28, 0, "Face Detected!");
+        sprintf(tem, "Temperature: %04.1f", temperature);
+        EVE_CMD_TEXT(245, 30, 29, 0, tem);
+        EVE_CMD_TEXT(452, 30, 20, 0, "o");
+        EVE_CMD_TEXT(454, 30, 29, 0, " C");
+
+        if (count > -1) {
+            EVE_COLOR_RGB(255, 0, 0);
+            EVE_CMD_TEXT(245, 60, 29, 0, "High temperature!");
+            EVE_COLOR_RGB(255, 225, 255);
+            EVE_CMD_TEXT(245, 94, 29, 0, "Scan the QR Code to");
+            EVE_CMD_TEXT(245, 130, 29, 0, "know more or call at");
+            EVE_CMD_TEXT(245, 166, 29, 0, "0120-296-004");
+            sprintf(counter, "00:%02d", count);
+            EVE_CMD_TEXT(290, 210, 31, 0, counter);
+        }
+    } else {
+        EVE_CMD_TEXT(0, 0, 28, 0, "No Face Detected");
+    }
+
     EVE_VERTEX2II(0, 30, 0, 0);
 
-    if (count > -1) {
-        EVE_COLOR_RGB(255, 0, 0);
-        EVE_CMD_TEXT(245, 30, 29, 0, "High temperature!");
-        EVE_COLOR_RGB(255, 225, 255);
-        EVE_CMD_TEXT(245, 62, 29, 0, "Scan the QR Code to");
-        EVE_CMD_TEXT(245, 90, 29, 0, "know more.");
-	sprintf(counter, "00:%02d", count);
-        EVE_CMD_TEXT(290, 130, 31, 0, counter);
-    }
 
     EVE_END();
     EVE_DISPLAY();
