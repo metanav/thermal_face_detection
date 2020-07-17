@@ -31,12 +31,16 @@ RUN git clone https://github.com/pimoroni/mlx90640-library.git
 RUN cd mlx90640-library && make clean && make I2C_MODE=LINUX && make install
 RUN cd mlx90640-library/python/library && make build && make install
 
+# download FT81x library to drive Gameduino 3 TFT display from Raspberry Pi
 RUN wget -q ftp://u45902898-ide:Ftd1%24erv@ftp.ftdichip.com/CES/Forum/BRT_AN_025_Beta/BRT_AN_025_Source_BETA.zip
 RUN unzip BRT_AN_025_Source_BETA.zip -d BRT_AN_025 && \
     cp -r BRT_AN_025/Examples/RaspberryPi/lib . && \
     rm -rf BRT_AN_025 BRT_AN_025_Source_BETA.zip
 
+# copy everything from current directoty to the working directory
 COPY . .
+
+# Override config for Gameduino 3
 RUN cp EVE_config.h lib/eve/include && make
 
 # execute main.py on start
